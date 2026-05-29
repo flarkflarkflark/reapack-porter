@@ -27,6 +27,12 @@ Optional:
 
 Without ReaImGui, the script falls back to REAPER's built-in dialogs. Without ZIP tooling, folder export still works as a fallback.
 
+## Screenshots
+
+![Export tab](assets/reapack-porter_export.png)
+
+![Import tab](assets/reapack-porter_import.png)
+
 ## REAPER Usage
 
 1. Copy `reapack_porter.lua` into your REAPER Scripts folder.
