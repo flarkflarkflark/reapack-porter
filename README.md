@@ -12,6 +12,21 @@ ReaPack Porter exports and imports REAPER ReaPack repository lists, so you can m
 - ReaImGui GUI inside REAPER with simple dialog fallback
 - CLI mode for automation
 
+## Dependencies
+
+Required:
+
+- REAPER with Lua/ReaScript, or standalone Lua for CLI use
+
+Optional:
+
+- ReaImGui: enables the tabbed GUI inside REAPER
+- js_ReaScriptAPI: enables folder browse dialogs in the GUI
+- `zip` and `unzip` on Linux/macOS: needed for ZIP export/import
+- PowerShell `Compress-Archive` and `Expand-Archive` on Windows: needed for ZIP export/import
+
+Without ReaImGui, the script falls back to REAPER's built-in dialogs. Without ZIP tooling, folder export still works as a fallback.
+
 ## REAPER Usage
 
 1. Copy `reapack_porter.lua` into your REAPER Scripts folder.
