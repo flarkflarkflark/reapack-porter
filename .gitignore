@@ -1,0 +1,5 @@
+.directory
+*.bak.*
+reapack-portable-*/
+reapack-portable-*.zip
+*-extracted-*/
