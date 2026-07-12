@@ -2,17 +2,24 @@ from __future__ import annotations
 
 import argparse
 from dataclasses import dataclass
-from datetime import datetime
 import os
-from pathlib import Path
-import shutil
 import sys
 from typing import Any, Callable
 
-from .bundles import BundleError, create_bundle_zip, export_bundle, load_bundle_remotes
-from .core import BackupError, ImportVerificationError, merge_remotes, parse_remotes, import_remotes
-from .paths import default_documents_dir, default_reapack_ini_path
-from .processes import ProcessDetectionError, is_reaper_running
+from .operations import (
+    DEFAULT_DEPS,
+    ExportOperationError,
+    ExportResult,
+    ImportOperationError,
+    ImportPlan,
+    ImportResult,
+    InvalidInputError,
+    ReaperDetectionError,
+    ReaperRunningError,
+    export_repositories,
+    import_repositories,
+    preview_import,
+)
 
 
 EXIT_SUCCESS = 0
@@ -28,36 +35,16 @@ Operation = Callable[..., Any]
 
 @dataclass(frozen=True)
 class CliDeps:
-    export_bundle: Operation
-    create_bundle_zip: Operation
-    load_bundle_remotes: Operation
-    import_remotes: Operation
-    default_reapack_ini_path: Operation
-    default_documents_dir: Operation
-    is_reaper_running: Operation
-    parse_remotes: Operation
-    merge_remotes: Operation
+    export_repositories: Operation
+    preview_import: Operation
+    import_repositories: Operation
 
 
 DEFAULT_DEPS = CliDeps(
-    export_bundle=export_bundle,
-    create_bundle_zip=create_bundle_zip,
-    load_bundle_remotes=load_bundle_remotes,
-    import_remotes=import_remotes,
-    default_reapack_ini_path=default_reapack_ini_path,
-    default_documents_dir=default_documents_dir,
-    is_reaper_running=is_reaper_running,
-    parse_remotes=parse_remotes,
-    merge_remotes=merge_remotes,
+    export_repositories=export_repositories,
+    preview_import=preview_import,
+    import_repositories=import_repositories,
 )
-
-
-def _platform_name() -> str:
-    return sys.platform
-
-
-def _home_dir(env: dict[str, str]) -> Path:
-    return Path(env.get("HOME") or env.get("USERPROFILE") or Path.home())
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -82,75 +69,50 @@ def build_parser() -> argparse.ArgumentParser:
     import_parser.add_argument("--dry-run", action="store_true", help="analyze import without writing")
 
     return parser
-
-
-def _default_output_dir(*, platform: str, env: dict[str, str], cwd: Path, deps: CliDeps) -> Path:
-    return deps.default_documents_dir(platform=platform, home=_home_dir(env), cwd=cwd)
-
-
-def _default_reapack_ini(*, platform: str, env: dict[str, str], deps: CliDeps) -> Path:
-    return deps.default_reapack_ini_path(platform=platform, home=_home_dir(env), env=env)
-
-
-def _read_text(path: Path) -> str:
-    with path.open("r", encoding="utf-8", newline="") as handle:
-        return handle.read()
-
-
-def _run_export(args: argparse.Namespace, *, deps: CliDeps, stdout, env: dict[str, str], cwd: Path, platform: str) -> int:
-    if args.keep_folder and not args.zip:
-        raise ValueError("--keep-folder can only be used together with --zip.")
-
-    source = Path(args.source) if args.source else _default_reapack_ini(platform=platform, env=env, deps=deps)
-    if not source.is_file():
-        raise FileNotFoundError(f"Source reapack.ini not found: {source}")
-
-    out_dir = Path(args.out) if args.out else _default_output_dir(platform=platform, env=env, cwd=cwd, deps=deps)
-    ini_text = _read_text(source)
-    parsed = deps.parse_remotes(ini_text)
-    if not parsed.remotes:
-        raise BundleError("No remotes found in [remotes] section.")
-
-    bundle_dir = out_dir / f"reapack-portable-{datetime.now().strftime('%Y%m%d-%H%M%S')}"
-    exported_dir = deps.export_bundle(bundle_dir, parsed.remotes, source=str(source))
-    print(f"Repositories: {len(parsed.remotes)}", file=stdout)
-    print(f"Export folder: {exported_dir}", file=stdout)
-
-    if args.zip:
-        zip_path = deps.create_bundle_zip(exported_dir)
-        print(f"ZIP: {zip_path}", file=stdout)
+def _run_export(args: argparse.Namespace, *, deps: CliDeps, stdout, env: dict[str, str], cwd, platform: str) -> int:
+    result: ExportResult = deps.export_repositories(
+        source=args.source,
+        output_dir=args.out,
+        create_zip=args.zip,
+        keep_folder=args.keep_folder,
+        env=env,
+        cwd=cwd,
+        platform=platform,
+    )
+    print(f"Repositories: {result.repository_count}", file=stdout)
+    print(f"Export folder: {result.bundle_path}", file=stdout)
+    if result.zip_path is not None:
+        print(f"ZIP: {result.zip_path}", file=stdout)
         if not args.keep_folder:
-            shutil.rmtree(exported_dir)
-            print(f"Removed export folder: {exported_dir}", file=stdout)
+            print(f"Removed export folder: {result.bundle_path}", file=stdout)
     return EXIT_SUCCESS
 
 
 def _run_import(args: argparse.Namespace, *, deps: CliDeps, stdout, env: dict[str, str], platform: str) -> int:
-    bundle_path = Path(args.bundle)
-    target = Path(args.target) if args.target else _default_reapack_ini(platform=platform, env=env, deps=deps)
     if args.dry_run:
-        imported_remotes = deps.load_bundle_remotes(bundle_path)
-        if not target.is_file():
-            raise FileNotFoundError(f"Target reapack.ini not found: {target}")
-        existing = deps.parse_remotes(_read_text(target))
-        merged, added, skipped = deps.merge_remotes(existing.remotes, imported_remotes)
-        print(f"Bundle repositories: {len(imported_remotes)}", file=stdout)
-        print(f"Would add: {added}", file=stdout)
-        print(f"Would skip existing: {skipped}", file=stdout)
-        print(f"Expected total: {len(merged)}", file=stdout)
+        plan: ImportPlan = deps.preview_import(
+            bundle=args.bundle,
+            target=args.target,
+            env=env,
+            platform=platform,
+        )
+        print(f"Bundle repositories: {plan.imported_count}", file=stdout)
+        print(f"Would add: {plan.added_count}", file=stdout)
+        print(f"Would skip existing: {plan.skipped_count}", file=stdout)
+        print(f"Expected total: {plan.total_count}", file=stdout)
         return EXIT_SUCCESS
 
-    running = deps.is_reaper_running(platform=platform)
-    if running:
-        raise RuntimeError("REAPER is running. Close all REAPER instances before importing repositories.")
-
-    imported_remotes = deps.load_bundle_remotes(bundle_path)
-    backup, added, skipped, total = deps.import_remotes(target, imported_remotes)
-    print(f"Target: {target}", file=stdout)
-    print(f"Backup: {backup}", file=stdout)
-    print(f"Added: {added}", file=stdout)
-    print(f"Skipped: {skipped}", file=stdout)
-    print(f"Total: {total}", file=stdout)
+    result: ImportResult = deps.import_repositories(
+        bundle=args.bundle,
+        target=args.target,
+        env=env,
+        platform=platform,
+    )
+    print(f"Target: {result.target_path}", file=stdout)
+    print(f"Backup: {result.backup_path}", file=stdout)
+    print(f"Added: {result.added_count}", file=stdout)
+    print(f"Skipped: {result.skipped_count}", file=stdout)
+    print(f"Total: {result.total_count}", file=stdout)
     return EXIT_SUCCESS
 
 
@@ -161,14 +123,14 @@ def main(
     stdout=None,
     stderr=None,
     env: dict[str, str] | None = None,
-    cwd: str | Path | None = None,
+    cwd=None,
     platform: str | None = None,
 ) -> int:
     stdout = stdout or sys.stdout
     stderr = stderr or sys.stderr
     env_map = dict(os.environ if env is None else env)
-    current_dir = Path.cwd() if cwd is None else Path(cwd)
-    platform_name = platform or _platform_name()
+    current_dir = cwd
+    platform_name = platform or sys.platform
     parser = build_parser()
 
     try:
@@ -184,19 +146,16 @@ def main(
         parser.error(f"Unknown command: {args.command}")
     except SystemExit as exc:
         return int(exc.code)
-    except ProcessDetectionError as exc:
+    except (ReaperDetectionError,) as exc:
         print(str(exc), file=stderr)
         return EXIT_REAPER_RUNNING
-    except RuntimeError as exc:
-        if str(exc).startswith("REAPER is running."):
-            print(str(exc), file=stderr)
-            return EXIT_REAPER_RUNNING
+    except (ReaperRunningError,) as exc:
         print(str(exc), file=stderr)
-        return EXIT_OPERATIONAL_ERROR
-    except (FileNotFoundError, BundleError, ValueError) as exc:
+        return EXIT_REAPER_RUNNING
+    except (InvalidInputError,) as exc:
         print(str(exc), file=stderr)
         return EXIT_INVALID_INPUT
-    except (BackupError, ImportVerificationError, OSError) as exc:
+    except (ExportOperationError, ImportOperationError) as exc:
         print(str(exc), file=stderr)
         return EXIT_OPERATIONAL_ERROR
     except Exception as exc:
