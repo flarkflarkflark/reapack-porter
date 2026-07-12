@@ -11,6 +11,11 @@ class BundleError(RuntimeError):
     pass
 
 
+def bundle_zip_path(bundle_dir: str | Path) -> Path:
+    path = Path(bundle_dir)
+    return path.parent / f"{path.name}.zip"
+
+
 def _bundle_readme(source: str, repo_count: int, bundle_hint: str) -> str:
     generated = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
     return (
@@ -56,6 +61,19 @@ def export_bundle(bundle_dir: str | Path, remotes: list[Remote], *, source: str)
         encoding="utf-8",
     )
     return target_dir
+
+
+def create_bundle_zip(bundle_dir: str | Path, zip_path: str | Path | None = None) -> Path:
+    source_dir = Path(bundle_dir)
+    if not source_dir.is_dir():
+        raise BundleError(f"Bundle folder not found: {source_dir}")
+
+    target_zip = Path(zip_path) if zip_path is not None else bundle_zip_path(source_dir)
+    with ZipFile(target_zip, "w") as archive:
+        for child in sorted(source_dir.rglob("*")):
+            if child.is_file():
+                archive.write(child, source_dir.name + "/" + str(child.relative_to(source_dir)))
+    return target_zip
 
 
 def _reject_unsafe_zip_name(name: str) -> None:

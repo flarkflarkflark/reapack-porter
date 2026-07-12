@@ -22,3 +22,17 @@ def default_reapack_ini_path(
     if normalized == "darwin":
         return home_path / "Library" / "Application Support" / "REAPER" / "reapack.ini"
     return home_path / ".config" / "REAPER" / "reapack.ini"
+
+
+def default_documents_dir(
+    *,
+    platform: str,
+    home: str | Path,
+    cwd: str | Path,
+) -> Path:
+    del platform
+    home_path = Path(home)
+    documents = home_path / "Documents"
+    if documents.exists():
+        return documents
+    return Path(cwd)
