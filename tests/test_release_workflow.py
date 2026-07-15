@@ -106,15 +106,43 @@ def test_release_workflow_uses_only_expected_actions_and_no_secrets_or_pat() -> 
     assert _uses_lines(text) == [
         "./.github/workflows/build-artifacts.yml",
         "actions/checkout@v7",
+        "actions/setup-python@v6",
         "actions/download-artifact@v8",
         "actions/upload-artifact@v7",
         "actions/checkout@v7",
+        "actions/setup-python@v6",
         "actions/download-artifact@v8",
     ]
     assert "secrets." not in text
     assert "PAT" not in text
     assert "pull_request_target" not in text
     assert _plain_run_scalar_offenders(text) == []
+
+
+def test_release_jobs_pin_python_311_before_python_commands() -> None:
+    text = _text()
+    collect = text.split("  collect:", maxsplit=1)[1].split("  create-draft-release:", maxsplit=1)[0]
+    draft = text.split("  create-draft-release:", maxsplit=1)[1]
+
+    assert collect.count("uses: actions/setup-python@v6") == 1
+    assert collect.count('python-version: "3.11"') == 1
+    collect_checkout = collect.index("uses: actions/checkout@v7")
+    collect_setup = collect.index("uses: actions/setup-python@v6")
+    collect_version = collect.index('python-version: "3.11"')
+    collect_validate = collect.index("- name: Validate version and tag")
+    assert collect_checkout < collect_setup < collect_version < collect_validate
+    assert collect_setup < collect.index("import tomllib")
+    assert collect_setup < collect.index("python tools/package_artifacts.py verify-set")
+    assert collect_setup < collect.index("python - <<'PY'")
+
+    assert draft.count("uses: actions/setup-python@v6") == 1
+    assert draft.count('python-version: "3.11"') == 1
+    draft_checkout = draft.index("uses: actions/checkout@v7")
+    draft_setup = draft.index("uses: actions/setup-python@v6")
+    draft_version = draft.index('python-version: "3.11"')
+    draft_validate = draft.index("- name: Validate release candidate")
+    assert draft_checkout < draft_setup < draft_version < draft_validate
+    assert draft_setup < draft.index("python tools/package_artifacts.py verify-set")
 
 
 def test_release_workflow_uploads_or_publishes_exact_checked_asset_set() -> None:
