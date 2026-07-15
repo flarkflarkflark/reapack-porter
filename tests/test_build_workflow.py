@@ -58,6 +58,20 @@ def test_workflow_uses_only_expected_actions_and_versions() -> None:
     assert '"PyInstaller==6.19.0"' in text
 
 
+def test_workflow_plain_run_scalars_do_not_contain_colon_space() -> None:
+    offenders: list[tuple[int, str]] = []
+
+    for line_number, line in enumerate(_workflow_text().splitlines(), 1):
+        stripped = line.lstrip()
+        if not stripped.startswith("run: "):
+            continue
+        scalar = stripped.removeprefix("run: ")
+        if ": " in scalar:
+            offenders.append((line_number, line))
+
+    assert offenders == []
+
+
 def test_workflow_runs_validation_build_verify_package_and_uploads_only_artifact_files() -> None:
     text = _workflow_text()
     assert "python -m pytest -q" in text
@@ -71,3 +85,11 @@ def test_workflow_runs_validation_build_verify_package_and_uploads_only_artifact
     assert "if-no-files-found: error" in text
     assert "retention-days: 14" in text
     assert "release/" not in text.split("path: |", maxsplit=1)[1]
+
+
+def test_workflow_colon_bearing_checks_use_block_scalars() -> None:
+    text = _workflow_text()
+    assert "Verify PyInstaller version\n        run: >-" in text
+    assert "Check runner architecture\n        run: >-" in text
+    assert "Unexpected PyInstaller version: " in text
+    assert "Architecture mismatch: expected " in text

@@ -65,7 +65,8 @@ jobs:
           python -m pip install pytest "PyInstaller==6.19.0"
 
       - name: Verify PyInstaller version
-        run: python -c "import PyInstaller; raise SystemExit(0 if PyInstaller.__version__ == '6.19.0' else 'Unexpected PyInstaller version: ' + PyInstaller.__version__)"
+        run: >-
+          python -c "import PyInstaller; raise SystemExit(0 if PyInstaller.__version__ == '6.19.0' else 'Unexpected PyInstaller version: ' + PyInstaller.__version__)"
 
       - name: Validate source
         run: |
@@ -77,7 +78,8 @@ jobs:
           python -c "import reapack_porter.gui, reapack_porter.tooltip, reapack_porter.operations; print('OK')"
 
       - name: Check runner architecture
-        run: python -c "import platform; arch=platform.machine().lower(); arch='x86_64' if arch in ('amd64','x86_64') else 'arm64' if arch in ('aarch64','arm64') else arch; raise SystemExit(0 if arch == '${{ matrix.arch-id }}' else 'Architecture mismatch: expected ${{ matrix.arch-id }}, got ' + arch)"
+        run: >-
+          python -c "import platform; arch=platform.machine().lower(); arch='x86_64' if arch in ('amd64','x86_64') else 'arm64' if arch in ('aarch64','arm64') else arch; raise SystemExit(0 if arch == '${{ matrix.arch-id }}' else 'Architecture mismatch: expected ${{ matrix.arch-id }}, got ' + arch)"
 
       - name: Build frozen outputs
         run: python tools/build_release.py --target all --clean
