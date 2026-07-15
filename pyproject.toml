@@ -5,7 +5,7 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "reapack-porter"
 version = "0.1.0"
-description = "Platform-independent core for ReaPack Porter"
+description = "Standalone cross-platform GUI and CLI for exporting and importing ReaPack repository configurations"
 requires-python = ">=3.10"
 
 [project.scripts]

@@ -1,10 +1,11 @@
 name: Build standalone artifacts
 
 on:
+  workflow_call:
   workflow_dispatch:
   push:
     branches:
-      - feature/standalone-app
+      - main
   pull_request:
     branches:
       - main
@@ -98,7 +99,7 @@ jobs:
         run: python tools/package_artifacts.py verify --archive "${{ steps.artifact_paths.outputs.archive }}" --checksum "${{ steps.artifact_paths.outputs.checksum }}" --platform ${{ matrix.platform-id }} --arch ${{ matrix.arch-id }}
 
       - name: Upload artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: ${{ matrix.artifact-id }}
           path: |

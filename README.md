@@ -1,145 +1,235 @@
 # ReaPack Porter
 
-ReaPack Porter exports and imports REAPER ReaPack repository lists, allowing you to move your ReaPack setup between systems using one portable ZIP file.
+ReaPack Porter is a standalone companion utility for ReaPack. It exports and imports ReaPack repository lists outside REAPER, with frozen GUI and CLI builds for Linux, Windows and macOS. The legacy Lua/ReaScript tool remains available in this repository for existing workflows.
 
-## Current Status
+## Download
 
-ReaPack Porter is currently available as a Lua tool:
+Published builds are distributed through GitHub Releases. Each release contains four platform archives, and each archive has a `.sha256` sidecar using this format:
 
-- a ReaScript GUI running inside REAPER
-- a standalone Lua command-line interface
+```text
+HASH  FILENAME
+```
 
-Exporting can safely be performed while REAPER is running.
+The v0.1.0 archive names are:
 
-Importing must be performed while REAPER is fully closed. REAPER and ReaPack may keep configuration data in memory and can ignore or overwrite changes made to `reapack.ini` during an active session.
+- `ReaPack-Porter-0.1.0-linux-x86_64.tar.gz`
+- `ReaPack-Porter-0.1.0-windows-x86_64.zip`
+- `ReaPack-Porter-0.1.0-macos-x86_64.zip`
+- `ReaPack-Porter-0.1.0-macos-arm64.zip`
 
-A future release is planned as a standalone graphical application for Windows, Linux and macOS. That application is not available yet.
+## Platform Installation
 
-## Features
+### Linux
 
-- Export ReaPack repositories from `reapack.ini`
-- Create a portable ZIP for transfer by USB, network, email or cloud storage
-- Import repositories from a ZIP file or exported folder
-- Skip repository URLs that already exist
-- Create a timestamped backup before import
-- ReaImGui GUI inside REAPER with a simple dialog fallback
-- Standalone Lua CLI mode for automation
-- Automatic detection of the standard REAPER resource path
-- Support explicitly supplied source and target paths
+Extract the `.tar.gz` archive and keep the full `ReaPack-Porter` directory together. Start the GUI with:
 
-## Important Import Warning
+```bash
+./ReaPack-Porter/ReaPack-Porter
+```
 
-> Close all running REAPER instances before importing repositories.
+Start the CLI with:
 
-Do not import into `reapack.ini` while REAPER is running. The current in-REAPER interface is suitable for export, but a reliable import requires REAPER to be closed.
+```bash
+./reapack-porter-cli
+```
 
-After importing:
+Frozen builds do not require a local Python installation. The first supported Linux architecture is `x86_64`.
 
-1. Start REAPER.
-2. Run `Extensions > ReaPack > Synchronize packages`.
+### Windows
 
-## Dependencies
+Extract the full ZIP archive. Do not copy only the `.exe` out of the GUI directory: `ReaPack-Porter\_internal` must stay next to the GUI executable.
 
-### Required
+GUI:
 
-For the graphical interface:
+```text
+ReaPack-Porter\ReaPack-Porter.exe
+```
 
-- REAPER with Lua/ReaScript support
+CLI:
 
-For command-line use:
+```text
+reapack-porter-cli.exe
+```
 
-- a standalone Lua interpreter
+Windows builds are not digitally signed yet, so Windows SmartScreen may show a warning.
 
-### Optional
+### macOS
 
-- ReaImGui: enables the tabbed GUI inside REAPER
-- js_ReaScriptAPI: enables folder browse dialogs
-- `zip` and `unzip` on Linux and macOS
-- PowerShell `Compress-Archive` and `Expand-Archive` on Windows
+Choose the ZIP for your Mac, extract it, and optionally move `ReaPack Porter.app` to Applications.
 
-Without ReaImGui, the script falls back to REAPER's built-in dialogs.
+- Intel build: `x86_64`
+- Apple Silicon build: `arm64`
+- No universal2 binary is produced.
 
-Without ZIP tooling, folder export remains available as a fallback.
+macOS builds are not codesigned or notarized yet, so Gatekeeper may show a warning. Prefer opening the app intentionally from Finder with Control-click or right-click > Open.
 
-## Screenshots
+## Quick Start
 
-These screenshots show the current ReaImGui version of ReaPack Porter running inside REAPER.
+Export:
+
+1. Check the automatically detected source `reapack.ini`.
+2. Choose an output folder.
+3. Optionally choose ZIP output.
+4. Click Export.
+
+Import:
+
+1. Close all REAPER processes.
+2. Choose a ZIP or bundle folder.
+3. Check the target `reapack.ini`.
+4. Use Preview.
+5. Run Import.
+6. Start REAPER.
+7. Run `Extensions > ReaPack > Synchronize packages`.
+
+## Critical Import Safety
+
+Export is read-only and may be used while REAPER is running.
+
+Import requires REAPER to be fully closed. If process status cannot be determined reliably, import fails closed. Preview and dry-run do not write anything. A real import first creates a timestamped backup, adds only missing repository URLs, preserves other INI sections, and writes by atomic replacement.
+
+## Automatic Path Detection
+
+Default `reapack.ini` locations:
+
+Windows:
+
+```text
+%APPDATA%\REAPER\reapack.ini
+```
+
+Linux:
+
+```text
+${XDG_CONFIG_HOME:-~/.config}/REAPER/reapack.ini
+```
+
+macOS:
+
+```text
+~/Library/Application Support/REAPER/reapack.ini
+```
+
+The GUI can also reuse a remembered manual path, detect a portable REAPER folder when `reaper.ini` and `reapack.ini` are together, and still lets you browse manually.
+
+## CLI Usage
+
+Help:
+
+```bash
+reapack-porter-cli --help
+```
+
+Linux and macOS examples:
+
+```bash
+./reapack-porter-cli export --zip
+```
+
+```bash
+./reapack-porter-cli export \
+  --source "/path/to/reapack.ini" \
+  --out "/path/to/output" \
+  --zip \
+  --keep-folder
+```
+
+```bash
+./reapack-porter-cli import \
+  --bundle "/path/to/ReaPack-Porter-export.zip" \
+  --target "/path/to/reapack.ini" \
+  --dry-run
+```
+
+```bash
+./reapack-porter-cli import \
+  --bundle "/path/to/ReaPack-Porter-export.zip" \
+  --target "/path/to/reapack.ini"
+```
+
+Windows examples can use `reapack-porter-cli.exe`.
+
+Exit codes:
+
+- `0`: success
+- `2`: usage error
+- `3`: REAPER running or process detection failure
+- `4`: invalid input
+- `5`: operational error
+- `6`: unexpected internal error
+
+## Bundle Contents
+
+Folder and ZIP bundles are supported. An export bundle contains:
+
+- `repos.tsv`
+- `repos_urls.txt`
+- `remotes_section.ini`
+- `README_IMPORT.txt`
+
+## Checksum Verification
+
+Linux:
+
+```bash
+sha256sum -c ReaPack-Porter-0.1.0-linux-x86_64.tar.gz.sha256
+```
+
+macOS:
+
+```bash
+shasum -a 256 -c ReaPack-Porter-0.1.0-macos-arm64.zip.sha256
+```
+
+Windows PowerShell:
+
+```powershell
+$expected = (Get-Content .\ReaPack-Porter-0.1.0-windows-x86_64.zip.sha256).Split()[0]
+$actual = (Get-FileHash .\ReaPack-Porter-0.1.0-windows-x86_64.zip -Algorithm SHA256).Hash.ToLower()
+$actual -eq $expected
+```
+
+## Building From Source
+
+```bash
+python -m venv .venv
+```
+
+Linux and macOS:
+
+```bash
+source .venv/bin/activate
+```
+
+Windows:
+
+```text
+.venv\Scripts\activate
+```
+
+Then:
+
+```bash
+python -m pip install -e ".[dev,build]"
+python -m pytest -q
+python tools/build_release.py --target all --clean
+```
+
+PyInstaller must build on each target platform itself.
+
+## Legacy Lua Tool
+
+The original `reapack_porter.lua` ReaScript remains available. It still supports GUI export inside REAPER, and existing workflows can continue using it.
+
+Reliable import should use the standalone application or standalone CLI while REAPER is closed.
+
+## Legacy ReaScript Screenshots
+
+These screenshots show the legacy ReaImGui interface running inside REAPER.
 
 ![Export tab](assets/reapack-porter_export.png)
 
 ![Import tab](assets/reapack-porter_import.png)
-
-## REAPER Usage
-
-1. Copy `reapack_porter.lua` into the REAPER Scripts folder.
-2. Open `Actions > Show action list`.
-3. Click `Load...`.
-4. Select `reapack_porter.lua`.
-5. Run the action.
-
-When ReaImGui is installed, ReaPack Porter opens a tabbed GUI. Without ReaImGui, it falls back to REAPER's built-in dialogs.
-
-Use this interface for export.
-
-For import, close REAPER completely and use the standalone Lua CLI.
-
-## CLI Usage
-
-Export repositories:
-
-```bash
-lua reapack_porter.lua export --zip
-```
-
-Import repositories while REAPER is closed:
-
-```bash
-lua reapack_porter.lua import --bundle "/path/to/reapack-portable.zip"
-```
-
-Custom paths:
-
-```bash
-lua reapack_porter.lua export \
-  --source "/path/to/reapack.ini" \
-  --out "/path/to/output" \
-  --zip
-lua reapack_porter.lua import \
-  --bundle "/path/to/bundle-or-folder" \
-  --target "/path/to/reapack.ini"
-```
-
-## Import Safety
-
-REAPER must be closed before import.
-
-Existing repository URLs are detected and skipped. Only missing URLs are added.
-
-A timestamped backup is created before writing, for example:
-
-```text
-reapack.ini.bak.20260529-161947
-```
-
-If a backup already exists for the same second, a suffix is added:
-
-```text
-reapack.ini.bak.20260529-161947-1
-```
-
-## Planned Standalone Application
-
-The planned standalone ReaPack Porter application will replace the in-REAPER import workflow with a graphical application that runs independently from REAPER on Windows, Linux and macOS.
-
-Expected goals:
-
-- no ReaScript or ReaImGui requirement
-- built-in ZIP handling
-- explicit detection that REAPER is closed before import
-- preservation of compatibility with existing ReaPack Porter export bundles
-- graphical export and import workflow outside REAPER
-
-This is planned work and has not been released yet.
 
 ## Disclaimer
 

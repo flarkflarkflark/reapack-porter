@@ -1,0 +1,183 @@
+name: Build release candidate
+
+on:
+  workflow_dispatch:
+  push:
+    tags:
+      - "v*.*.*"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  build:
+    uses: ./.github/workflows/build-artifacts.yml
+    permissions:
+      contents: read
+
+  collect:
+    name: Collect and verify release assets
+    needs: build
+    runs-on: ubuntu-22.04
+    permissions:
+      contents: read
+    outputs:
+      version: ${{ steps.release.outputs.version }}
+      expected-tag: ${{ steps.release.outputs.expected-tag }}
+      candidate-artifact-name: ${{ steps.release.outputs.candidate-artifact-name }}
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+
+      - name: Download platform artifacts
+        uses: actions/download-artifact@v8
+        with:
+          pattern: ReaPack-Porter-*
+          merge-multiple: true
+          path: release-assets
+
+      - name: Validate version and tag
+        id: release
+        shell: bash
+        run: |
+          set -euo pipefail
+          VERSION="$(python - <<'PY'
+          import tomllib
+          from pathlib import Path
+          data = tomllib.loads(Path("pyproject.toml").read_text(encoding="utf-8"))
+          print(data["project"]["version"])
+          PY
+          )"
+          if [[ -z "$VERSION" ]]; then
+            echo "Project version is empty" >&2
+            exit 1
+          fi
+          EXPECTED_TAG="v${VERSION}"
+          if [[ "${GITHUB_REF_TYPE}" == "tag" ]]; then
+            if [[ "${GITHUB_REF_NAME}" != "$EXPECTED_TAG" ]]; then
+              echo "Tag does not match project version" >&2
+              exit 1
+            fi
+            git fetch origin main --no-tags
+            TAG_SHA="$(git rev-list -n 1 "$GITHUB_REF_NAME")"
+            if [[ "$GITHUB_SHA" != "$TAG_SHA" ]]; then
+              echo "Checked-out SHA does not match tag commit" >&2
+              exit 1
+            fi
+            if ! git merge-base --is-ancestor "$GITHUB_SHA" origin/main; then
+              echo "Tag commit is not an ancestor of origin/main" >&2
+              exit 1
+            fi
+          fi
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          echo "expected-tag=$EXPECTED_TAG" >> "$GITHUB_OUTPUT"
+          echo "candidate-artifact-name=ReaPack-Porter-v${VERSION}-release-candidate" >> "$GITHUB_OUTPUT"
+
+      - name: Verify release asset set
+        shell: bash
+        run: |
+          set -euo pipefail
+          python tools/package_artifacts.py verify-set \
+            --input-dir release-assets \
+            --manifest release-assets/SHA256SUMS.txt
+          python - <<'PY'
+          from pathlib import Path
+          root = Path("release-assets")
+          files = sorted(path.name for path in root.iterdir() if path.is_file())
+          expected = sorted([
+              "ReaPack-Porter-0.1.0-linux-x86_64.tar.gz",
+              "ReaPack-Porter-0.1.0-linux-x86_64.tar.gz.sha256",
+              "ReaPack-Porter-0.1.0-macos-arm64.zip",
+              "ReaPack-Porter-0.1.0-macos-arm64.zip.sha256",
+              "ReaPack-Porter-0.1.0-macos-x86_64.zip",
+              "ReaPack-Porter-0.1.0-macos-x86_64.zip.sha256",
+              "ReaPack-Porter-0.1.0-windows-x86_64.zip",
+              "ReaPack-Porter-0.1.0-windows-x86_64.zip.sha256",
+              "SHA256SUMS.txt",
+          ])
+          if files != expected:
+              raise SystemExit(f"Unexpected release-assets contents: {files}")
+          PY
+
+      - name: Upload release candidate
+        uses: actions/upload-artifact@v7
+        with:
+          name: ${{ steps.release.outputs.candidate-artifact-name }}
+          path: |
+            release-assets/ReaPack-Porter-0.1.0-linux-x86_64.tar.gz
+            release-assets/ReaPack-Porter-0.1.0-linux-x86_64.tar.gz.sha256
+            release-assets/ReaPack-Porter-0.1.0-macos-arm64.zip
+            release-assets/ReaPack-Porter-0.1.0-macos-arm64.zip.sha256
+            release-assets/ReaPack-Porter-0.1.0-macos-x86_64.zip
+            release-assets/ReaPack-Porter-0.1.0-macos-x86_64.zip.sha256
+            release-assets/ReaPack-Porter-0.1.0-windows-x86_64.zip
+            release-assets/ReaPack-Porter-0.1.0-windows-x86_64.zip.sha256
+            release-assets/SHA256SUMS.txt
+          if-no-files-found: error
+          retention-days: 30
+
+  create-draft-release:
+    name: Create draft GitHub Release
+    needs:
+      - build
+      - collect
+    if: github.event_name == 'push' && github.ref_type == 'tag'
+    runs-on: ubuntu-22.04
+    permissions:
+      contents: write
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+
+      - name: Download verified release candidate
+        uses: actions/download-artifact@v8
+        with:
+          name: ${{ needs.collect.outputs.candidate-artifact-name }}
+          path: release-ready
+
+      - name: Validate release candidate
+        shell: bash
+        run: |
+          set -euo pipefail
+          TAG="${GITHUB_REF_NAME}"
+          if [[ "$TAG" != "${{ needs.collect.outputs.expected-tag }}" ]]; then
+            echo "Tag does not match expected project tag" >&2
+            exit 1
+          fi
+          rm -f release-ready/SHA256SUMS.txt
+          python tools/package_artifacts.py verify-set \
+            --input-dir release-ready \
+            --manifest release-ready/SHA256SUMS.txt
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            echo "Release already exists for $TAG" >&2
+            exit 1
+          fi
+        env:
+          GH_TOKEN: ${{ github.token }}
+
+      - name: Create draft release
+        shell: bash
+        run: |
+          set -euo pipefail
+          TAG="${GITHUB_REF_NAME}"
+          mapfile -t ASSETS < <(find release-ready -maxdepth 1 -type f | sort)
+          if [[ "${#ASSETS[@]}" -ne 9 ]]; then
+            echo "Expected exactly nine release assets" >&2
+            exit 1
+          fi
+          gh release create "$TAG" \
+            --verify-tag \
+            --draft \
+            --title "ReaPack Porter v0.1.0" \
+            --notes-file docs/release-notes/v0.1.0.md \
+            "${ASSETS[@]}"
+        env:
+          GH_TOKEN: ${{ github.token }}

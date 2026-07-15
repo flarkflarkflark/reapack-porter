@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import argparse
+from collections.abc import Callable
 from dataclasses import dataclass
 import hashlib
 import os
@@ -29,6 +30,12 @@ FORBIDDEN_NAMES = {
 }
 PLATFORMS = ("linux", "windows", "macos")
 ARCHES = ("x86_64", "arm64")
+RELEASE_TARGETS = (
+    ("linux", "x86_64"),
+    ("windows", "x86_64"),
+    ("macos", "x86_64"),
+    ("macos", "arm64"),
+)
 
 
 class PackageError(RuntimeError):
@@ -97,6 +104,13 @@ def artifact_paths(
     top_dir = f"{PRODUCT}-{version}-{platform}-{arch}"
     archive = Path(output_dir) / f"{top_dir}.{archive_extension(platform)}"
     return ArtifactPaths(archive=archive, checksum=Path(f"{archive}.sha256"), top_dir=top_dir)
+
+
+def expected_release_artifacts(*, output_dir: str | Path, version: str | None = None) -> tuple[ArtifactPaths, ...]:
+    return tuple(
+        artifact_paths(platform=platform, arch=arch, output_dir=output_dir, version=version)
+        for platform, arch in RELEASE_TARGETS
+    )
 
 
 def expected_members(platform: str, dist_dir: Path) -> tuple[Path, Path]:
@@ -176,6 +190,110 @@ def write_checksum(archive: Path) -> Path:
     checksum = Path(f"{archive}.sha256")
     checksum.write_text(f"{digest}  {archive.name}\n", encoding="utf-8", newline="\n")
     return checksum
+
+
+def _is_archive_name(name: str) -> bool:
+    return name.endswith(".tar.gz") or name.endswith(".zip")
+
+
+def _is_sidecar_name(name: str) -> bool:
+    return name.endswith(".sha256")
+
+
+def _collect_unique_basenames(paths: list[Path], *, kind: str) -> dict[str, Path]:
+    by_name: dict[str, Path] = {}
+    duplicates: list[str] = []
+    for path in paths:
+        if path.name in by_name:
+            duplicates.append(path.name)
+            continue
+        by_name[path.name] = path
+    if duplicates:
+        raise PackageError(f"Duplicate {kind} basename: {', '.join(sorted(set(duplicates)))}")
+    return by_name
+
+
+def _find_release_files(input_dir: Path) -> tuple[dict[str, Path], dict[str, Path]]:
+    if not input_dir.is_dir():
+        raise PackageError(f"Input directory not found: {input_dir}")
+    files = [path for path in input_dir.rglob("*") if path.is_file()]
+    archives = _collect_unique_basenames([path for path in files if _is_archive_name(path.name)], kind="archive")
+    sidecars = _collect_unique_basenames([path for path in files if _is_sidecar_name(path.name)], kind="sidecar")
+    return archives, sidecars
+
+
+def _read_sidecar(checksum: Path, archive: Path) -> str:
+    expected = f"{hashlib.sha256(archive.read_bytes()).hexdigest()}  {archive.name}"
+    actual = checksum.read_text(encoding="utf-8").strip()
+    if actual != expected:
+        raise PackageError(f"Checksum mismatch: {checksum.name}")
+    digest, separator, filename = actual.partition("  ")
+    if not separator or filename != archive.name:
+        raise PackageError(f"Invalid checksum sidecar format: {checksum.name}")
+    if len(digest) != 64 or digest.lower() != digest or any(char not in "0123456789abcdef" for char in digest):
+        raise PackageError(f"Invalid checksum digest: {checksum.name}")
+    return digest
+
+
+def _write_manifest_atomic(manifest: Path, lines: list[str], *, force: bool) -> None:
+    if manifest.exists() and not force:
+        raise PackageError(f"Refusing to overwrite existing manifest without --force: {manifest}")
+    manifest.parent.mkdir(parents=True, exist_ok=True)
+    temp = manifest.with_name(f".{manifest.name}.tmp")
+    try:
+        temp.write_text("".join(lines), encoding="utf-8", newline="\n")
+        os.replace(temp, manifest)
+    except Exception:
+        try:
+            temp.unlink()
+        except FileNotFoundError:
+            pass
+        raise
+
+
+def verify_release_set(
+    *,
+    input_dir: str | Path,
+    manifest: str | Path,
+    force: bool = False,
+    verifier: Callable[..., None] | None = None,
+) -> Path:
+    verifier = verifier or verify_artifact
+    version = read_version()
+    root = Path(input_dir)
+    manifest_path = Path(manifest)
+    expected = expected_release_artifacts(output_dir=root, version=version)
+    expected_archives = {paths.archive.name: paths for paths in expected}
+    expected_sidecars = {paths.checksum.name for paths in expected}
+    archives, sidecars = _find_release_files(root)
+
+    missing_archives = sorted(set(expected_archives) - set(archives))
+    missing_sidecars = sorted(expected_sidecars - set(sidecars))
+    unexpected_archives = sorted(set(archives) - set(expected_archives))
+    unexpected_sidecars = sorted(set(sidecars) - expected_sidecars)
+    errors = []
+    if missing_archives:
+        errors.append("missing archives: " + ", ".join(missing_archives))
+    if missing_sidecars:
+        errors.append("missing sidecars: " + ", ".join(missing_sidecars))
+    if unexpected_archives:
+        errors.append("unexpected archives: " + ", ".join(unexpected_archives))
+    if unexpected_sidecars:
+        errors.append("unexpected sidecars: " + ", ".join(unexpected_sidecars))
+    if errors:
+        raise PackageError("; ".join(errors))
+
+    manifest_lines: list[str] = []
+    for archive_name in sorted(expected_archives):
+        paths = expected_archives[archive_name]
+        archive = archives[archive_name]
+        checksum = sidecars[f"{archive_name}.sha256"]
+        verifier(archive=archive, checksum=checksum, platform=paths.top_dir.rsplit("-", 2)[-2], arch=paths.top_dir.rsplit("-", 1)[-1])
+        digest = _read_sidecar(checksum, archive)
+        manifest_lines.append(f"{digest}  {archive.name}\n")
+
+    _write_manifest_atomic(manifest_path, manifest_lines, force=force)
+    return manifest_path
 
 
 def create_artifact(
@@ -285,6 +403,14 @@ def _write_github_output(paths: ArtifactPaths) -> None:
 
 def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     args = list(sys.argv[1:] if argv is None else argv)
+    if args and args[0] == "verify-set":
+        parser = argparse.ArgumentParser(description="Verify a complete ReaPack Porter release asset set.")
+        parser.add_argument("command", choices=("verify-set",))
+        parser.add_argument("--input-dir", type=Path, required=True)
+        parser.add_argument("--manifest", type=Path, required=True)
+        parser.add_argument("--force", action="store_true")
+        parser.add_argument("--debug", action="store_true")
+        return parser.parse_args(args)
     if args and args[0] == "verify":
         parser = argparse.ArgumentParser(description="Verify a ReaPack Porter standalone artifact.")
         parser.add_argument("command", choices=("verify",))
@@ -319,6 +445,10 @@ def main(argv: list[str] | None = None) -> int:
             verify_artifact(archive=args.archive, checksum=args.checksum, platform=args.platform, arch=args.arch)
             print("Artifact verification OK")
             return EXIT_SUCCESS
+        if getattr(args, "command", None) == "verify-set":
+            manifest = verify_release_set(input_dir=args.input_dir, manifest=args.manifest, force=args.force)
+            print(f"Release set verification OK: {manifest}")
+            return EXIT_SUCCESS
         if getattr(args, "command", None) == "paths":
             paths = artifact_paths(platform=args.platform, arch=args.arch, output_dir=args.output_dir)
             _write_github_output(paths)
@@ -335,7 +465,7 @@ def main(argv: list[str] | None = None) -> int:
         print(paths.archive)
         print(paths.checksum)
         return EXIT_SUCCESS
-    except PackageError as exc:
+    except (PackageError, OSError) as exc:
         if getattr(args, "debug", False):
             raise
         print(str(exc), file=sys.stderr)
