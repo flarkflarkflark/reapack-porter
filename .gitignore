@@ -3,3 +3,16 @@
 reapack-portable-*/
 reapack-portable-*.zip
 *-extracted-*/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.venv/
+venv/
+build/
+dist/
+release/
+.pyinstaller-work/
+*.egg-info/
+*.spec
+!tools/pyinstaller/*.spec
+.DS_Store

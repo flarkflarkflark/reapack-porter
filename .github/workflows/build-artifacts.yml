@@ -1,0 +1,108 @@
+name: Build standalone artifacts
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - feature/standalone-app
+  pull_request:
+    branches:
+      - main
+
+permissions:
+  contents: read
+
+concurrency:
+  group: build-artifacts-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    name: ${{ matrix.artifact-id }}
+    runs-on: ${{ matrix.runner }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runner: ubuntu-22.04
+            platform-id: linux
+            arch-id: x86_64
+            artifact-id: ReaPack-Porter-linux-x86_64
+          - runner: windows-2022
+            platform-id: windows
+            arch-id: x86_64
+            artifact-id: ReaPack-Porter-windows-x86_64
+          - runner: macos-15-intel
+            platform-id: macos
+            arch-id: x86_64
+            artifact-id: ReaPack-Porter-macos-x86_64
+          - runner: macos-15
+            platform-id: macos
+            arch-id: arm64
+            artifact-id: ReaPack-Porter-macos-arm64
+
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v7
+
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.11"
+
+      - name: Install Linux GUI smoke dependencies
+        if: matrix.platform-id == 'linux'
+        shell: bash
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y xvfb
+          python -c "import tkinter; print(tkinter.TkVersion)"
+
+      - name: Install Python dependencies
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -e .
+          python -m pip install pytest "PyInstaller==6.19.0"
+
+      - name: Verify PyInstaller version
+        run: >-
+          python -c "import PyInstaller; raise SystemExit(0 if PyInstaller.__version__ == '6.19.0' else 'Unexpected PyInstaller version: ' + PyInstaller.__version__)"
+
+      - name: Validate source
+        run: |
+          python -m pytest -q
+          python -m compileall -q src tools
+          python -m reapack_porter --help
+          python -m reapack_porter export --help
+          python -m reapack_porter import --help
+          python -c "import reapack_porter.gui, reapack_porter.tooltip, reapack_porter.operations; print('OK')"
+
+      - name: Check runner architecture
+        run: >-
+          python -c "import platform; arch=platform.machine().lower(); arch='x86_64' if arch in ('amd64','x86_64') else 'arm64' if arch in ('aarch64','arm64') else arch; raise SystemExit(0 if arch == '${{ matrix.arch-id }}' else 'Architecture mismatch: expected ${{ matrix.arch-id }}, got ' + arch)"
+
+      - name: Build frozen outputs
+        run: python tools/build_release.py --target all --clean
+
+      - name: Verify frozen outputs
+        run: python tools/verify_frozen_build.py --platform ${{ matrix.platform-id }} --arch ${{ matrix.arch-id }} --dist-dir dist
+
+      - name: Package artifact
+        run: python tools/package_artifacts.py --platform ${{ matrix.platform-id }} --arch ${{ matrix.arch-id }} --dist-dir dist --output-dir release --force
+
+      - name: Resolve artifact paths
+        id: artifact_paths
+        run: python tools/package_artifacts.py paths --platform ${{ matrix.platform-id }} --arch ${{ matrix.arch-id }} --output-dir release
+
+      - name: Verify packaged artifact
+        run: python tools/package_artifacts.py verify --archive "${{ steps.artifact_paths.outputs.archive }}" --checksum "${{ steps.artifact_paths.outputs.checksum }}" --platform ${{ matrix.platform-id }} --arch ${{ matrix.arch-id }}
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.artifact-id }}
+          path: |
+            ${{ steps.artifact_paths.outputs.archive }}
+            ${{ steps.artifact_paths.outputs.checksum }}
+          if-no-files-found: error
+          retention-days: 14
