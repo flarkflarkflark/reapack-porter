@@ -16,6 +16,9 @@ reapack-porter-gui = "reapack_porter.gui:main"
 
 [project.optional-dependencies]
 dev = ["pytest>=7.0"]
+build = [
+  "PyInstaller>=6.19,<7",
+]
 
 [tool.setuptools]
 package-dir = {"" = "src"}

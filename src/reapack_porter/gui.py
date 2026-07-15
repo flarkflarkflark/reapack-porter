@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import importlib
 import os
 from dataclasses import dataclass
 from pathlib import Path
@@ -27,13 +26,33 @@ from .settings import (
     remember_output_dir,
     save_settings,
 )
+from .tooltip import Tooltip
+
+
+TOOLTIP_TEXTS = {
+    "source_browse": "Select the reapack.ini file whose repository list you want to export. The standard REAPER location is detected automatically when possible.",
+    "output_browse": "Choose where the exported ReaPack Porter bundle or ZIP file will be saved.",
+    "create_zip": "Package the exported repository files into one portable ZIP archive.",
+    "keep_folder": "Keep the unpacked export folder after the ZIP archive has been created successfully.",
+    "export": "Export the repositories from the selected reapack.ini. Exporting only reads the configuration and is safe while REAPER is running.",
+    "reset_paths": "Reset the source and output paths using the current automatic path detection. Remembered custom paths are ignored for this reset.",
+    "open_output": "Open the folder containing the most recently created export bundle or ZIP file.",
+    "bundle_zip_browse": "Select a ReaPack Porter ZIP file containing an exported repository list.",
+    "bundle_folder_browse": "Select an exported ReaPack Porter bundle folder containing remotes_section.ini.",
+    "target_browse": "Select the reapack.ini file that will receive the missing repositories. REAPER must be fully closed before importing.",
+    "preview": "Compare the selected bundle with the target configuration. Preview does not change files and does not create a backup.",
+    "refresh_reaper": "Check again whether any REAPER process is running. Import remains disabled unless REAPER is confirmed closed.",
+    "import": "Create a timestamped backup and add only the missing repositories to the target reapack.ini. REAPER must be fully closed.",
+    "reset_target": "Reset the target path using the current automatic REAPER configuration detection. The remembered custom target is ignored for this reset.",
+}
+
+TOOLTIP_WIDGETS = tuple(TOOLTIP_TEXTS)
 
 
 def _load_tk_modules():
-    tk = importlib.import_module("tkinter")
-    ttk = importlib.import_module("tkinter.ttk")
-    filedialog = importlib.import_module("tkinter.filedialog")
-    messagebox = importlib.import_module("tkinter.messagebox")
+    import tkinter as tk
+    from tkinter import filedialog, messagebox, ttk
+
     return tk, ttk, filedialog, messagebox
 
 
@@ -104,6 +123,7 @@ class ReaPackPorterApp:
         self.import_status_var = tk.StringVar(value="")
         self.preview_var = tk.StringVar(value="")
         self.reaper_status_var = tk.StringVar(value=reaper_status_text(REAPER_UNKNOWN))
+        self.tooltips = []
 
         self._build()
         self._load_settings()
@@ -128,18 +148,21 @@ class ReaPackPorterApp:
         self.ttk.Label(self.export_tab, text="Export ReaPack repositories").grid(row=0, column=0, columnspan=3, sticky="w")
         self.ttk.Label(self.export_tab, text="Source reapack.ini").grid(row=1, column=0, sticky="w")
         self.ttk.Entry(self.export_tab, textvariable=self.source_var, width=60).grid(row=2, column=0, sticky="ew")
-        self.ttk.Button(self.export_tab, text="Browse...", command=self._browse_source).grid(row=2, column=1, padx=(8, 0))
+        self.source_browse_button = self.ttk.Button(self.export_tab, text="Browse...", command=self._browse_source)
+        self.source_browse_button.grid(row=2, column=1, padx=(8, 0))
         self.ttk.Label(self.export_tab, textvariable=self.source_status_var).grid(row=2, column=2, sticky="w", padx=(8, 0))
         self.ttk.Label(self.export_tab, text="Output folder").grid(row=3, column=0, sticky="w", pady=(12, 0))
         self.ttk.Entry(self.export_tab, textvariable=self.output_var, width=60).grid(row=4, column=0, sticky="ew")
-        self.ttk.Button(self.export_tab, text="Browse...", command=self._browse_output).grid(row=4, column=1, padx=(8, 0))
+        self.output_browse_button = self.ttk.Button(self.export_tab, text="Browse...", command=self._browse_output)
+        self.output_browse_button.grid(row=4, column=1, padx=(8, 0))
         self.create_zip_check = self.ttk.Checkbutton(self.export_tab, text="Create ZIP file", variable=self.create_zip_var, command=self._refresh_export_controls)
         self.create_zip_check.grid(row=5, column=0, sticky="w", pady=(12, 0))
         self.keep_folder_check = self.ttk.Checkbutton(self.export_tab, text="Keep folder after ZIP", variable=self.keep_folder_var)
         self.keep_folder_check.grid(row=6, column=0, sticky="w")
         self.export_button = self.ttk.Button(self.export_tab, text="Export", command=self._do_export)
         self.export_button.grid(row=7, column=0, sticky="w", pady=(12, 0))
-        self.ttk.Button(self.export_tab, text="Reset paths", command=self._set_default_paths).grid(row=7, column=1, sticky="w", padx=(8, 0))
+        self.reset_paths_button = self.ttk.Button(self.export_tab, text="Reset paths", command=self._set_default_paths)
+        self.reset_paths_button.grid(row=7, column=1, sticky="w", padx=(8, 0))
         self.open_output_button = self.ttk.Button(self.export_tab, text="Open output folder", command=self._open_output)
         self.open_output_button.grid(row=8, column=0, sticky="w", pady=(8, 0))
         self.ttk.Label(self.export_tab, textvariable=self.export_status_var, wraplength=620).grid(row=9, column=0, columnspan=3, sticky="w", pady=(12, 0))
@@ -147,29 +170,61 @@ class ReaPackPorterApp:
 
         self.source_var.trace_add("write", lambda *_: self._refresh_export_controls())
         self.output_var.trace_add("write", lambda *_: self._refresh_export_controls())
+        self._attach_tooltips(
+            {
+                "source_browse": self.source_browse_button,
+                "output_browse": self.output_browse_button,
+                "create_zip": self.create_zip_check,
+                "keep_folder": self.keep_folder_check,
+                "export": self.export_button,
+                "reset_paths": self.reset_paths_button,
+                "open_output": self.open_output_button,
+            }
+        )
 
     def _build_import_tab(self) -> None:
         self.ttk.Label(self.import_tab, text="Import ReaPack repositories").grid(row=0, column=0, columnspan=4, sticky="w")
         self.ttk.Label(self.import_tab, text="Bundle folder or ZIP file").grid(row=1, column=0, sticky="w")
         self.ttk.Entry(self.import_tab, textvariable=self.bundle_var, width=60).grid(row=2, column=0, sticky="ew")
-        self.ttk.Button(self.import_tab, text="Browse ZIP...", command=self._browse_bundle_zip).grid(row=2, column=1, padx=(8, 0))
-        self.ttk.Button(self.import_tab, text="Browse folder...", command=self._browse_bundle_folder).grid(row=2, column=2, padx=(8, 0))
+        self.bundle_zip_browse_button = self.ttk.Button(self.import_tab, text="Browse ZIP...", command=self._browse_bundle_zip)
+        self.bundle_zip_browse_button.grid(row=2, column=1, padx=(8, 0))
+        self.bundle_folder_browse_button = self.ttk.Button(self.import_tab, text="Browse folder...", command=self._browse_bundle_folder)
+        self.bundle_folder_browse_button.grid(row=2, column=2, padx=(8, 0))
         self.ttk.Label(self.import_tab, text="Target reapack.ini").grid(row=3, column=0, sticky="w", pady=(12, 0))
         self.ttk.Entry(self.import_tab, textvariable=self.target_var, width=60).grid(row=4, column=0, sticky="ew")
-        self.ttk.Button(self.import_tab, text="Browse...", command=self._browse_target).grid(row=4, column=1, padx=(8, 0))
+        self.target_browse_button = self.ttk.Button(self.import_tab, text="Browse...", command=self._browse_target)
+        self.target_browse_button.grid(row=4, column=1, padx=(8, 0))
         self.ttk.Label(self.import_tab, textvariable=self.target_status_var).grid(row=4, column=2, sticky="w", padx=(8, 0))
-        self.ttk.Button(self.import_tab, text="Preview", command=self._do_preview).grid(row=5, column=0, sticky="w", pady=(12, 0))
+        self.preview_button = self.ttk.Button(self.import_tab, text="Preview", command=self._do_preview)
+        self.preview_button.grid(row=5, column=0, sticky="w", pady=(12, 0))
         self.ttk.Label(self.import_tab, textvariable=self.preview_var, wraplength=620).grid(row=6, column=0, columnspan=4, sticky="w", pady=(8, 0))
         self.ttk.Label(self.import_tab, textvariable=self.reaper_status_var).grid(row=7, column=0, sticky="w", pady=(12, 0))
-        self.ttk.Button(self.import_tab, text="Refresh REAPER status", command=self._refresh_import_status).grid(row=7, column=1, sticky="w", padx=(8, 0))
+        self.refresh_reaper_button = self.ttk.Button(self.import_tab, text="Refresh REAPER status", command=self._refresh_import_status)
+        self.refresh_reaper_button.grid(row=7, column=1, sticky="w", padx=(8, 0))
         self.import_button = self.ttk.Button(self.import_tab, text="Import", command=self._do_import)
         self.import_button.grid(row=8, column=0, sticky="w", pady=(12, 0))
-        self.ttk.Button(self.import_tab, text="Reset target", command=self._reset_target).grid(row=8, column=1, sticky="w", padx=(8, 0))
+        self.reset_target_button = self.ttk.Button(self.import_tab, text="Reset target", command=self._reset_target)
+        self.reset_target_button.grid(row=8, column=1, sticky="w", padx=(8, 0))
         self.ttk.Label(self.import_tab, textvariable=self.import_status_var, wraplength=620).grid(row=9, column=0, columnspan=4, sticky="w", pady=(12, 0))
         self.import_tab.columnconfigure(0, weight=1)
 
         self.bundle_var.trace_add("write", lambda *_: self._mark_preview_stale())
         self.target_var.trace_add("write", lambda *_: self._mark_preview_stale())
+        self._attach_tooltips(
+            {
+                "bundle_zip_browse": self.bundle_zip_browse_button,
+                "bundle_folder_browse": self.bundle_folder_browse_button,
+                "target_browse": self.target_browse_button,
+                "preview": self.preview_button,
+                "refresh_reaper": self.refresh_reaper_button,
+                "import": self.import_button,
+                "reset_target": self.reset_target_button,
+            }
+        )
+
+    def _attach_tooltips(self, widgets: dict[str, object]) -> None:
+        for key, widget in widgets.items():
+            self.tooltips.append(Tooltip(widget, TOOLTIP_TEXTS[key]))
 
     def _load_settings(self) -> None:
         env = dict(os.environ)

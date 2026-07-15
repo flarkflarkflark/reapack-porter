@@ -6,6 +6,7 @@ from pathlib import Path
 import sys
 
 from reapack_porter.gui import main
+from reapack_porter.gui import TOOLTIP_TEXTS, TOOLTIP_WIDGETS
 from reapack_porter.gui_state import (
     PATH_DETECTED,
     PATH_EXPECTED,
@@ -79,3 +80,32 @@ def test_export_enabled_and_keep_folder_state() -> None:
     assert export_enabled("source.ini", "out", source_exists=False) is False
     assert keep_folder_enabled(True) is True
     assert keep_folder_enabled(False) is False
+
+
+def test_tooltip_texts_are_centralized_for_all_controls() -> None:
+    expected = {
+        "source_browse",
+        "output_browse",
+        "create_zip",
+        "keep_folder",
+        "export",
+        "reset_paths",
+        "open_output",
+        "bundle_zip_browse",
+        "bundle_folder_browse",
+        "target_browse",
+        "preview",
+        "refresh_reaper",
+        "import",
+        "reset_target",
+    }
+
+    assert set(TOOLTIP_WIDGETS) == expected
+    assert set(TOOLTIP_TEXTS) == expected
+    assert all(TOOLTIP_TEXTS[key].strip() for key in expected)
+
+
+def test_all_tooltip_texts_are_plain_english_sentences() -> None:
+    assert TOOLTIP_TEXTS["source_browse"].startswith("Select the reapack.ini file")
+    assert TOOLTIP_TEXTS["import"].startswith("Create a timestamped backup")
+    assert all("\n" not in text for text in TOOLTIP_TEXTS.values())
