@@ -21,6 +21,10 @@ class ImportVerificationError(RuntimeError):
     pass
 
 
+class ConfigEncodingError(ValueError):
+    pass
+
+
 @dataclass(frozen=True)
 class Remote:
     name: str
@@ -34,6 +38,12 @@ class ParsedRemotes:
     remotes: list[Remote]
     declared_size: int | None
     section_present: bool
+
+
+@dataclass(frozen=True)
+class DecodedIni:
+    text: str
+    encoding: str
 
 
 def normalize_url(url: str) -> str:
@@ -50,6 +60,35 @@ def _split_lines(text: str) -> list[str]:
 
 def detect_newline(text: str) -> str:
     return "\r\n" if "\r\n" in text else "\n"
+
+
+def decode_ini_bytes(data: bytes, *, path: str | Path | None = None) -> DecodedIni:
+    has_bom = data.startswith(b"\xef\xbb\xbf")
+    try:
+        text = data.decode("utf-8-sig")
+        return DecodedIni(text=text, encoding="utf-8-sig" if has_bom else "utf-8")
+    except UnicodeDecodeError:
+        pass
+
+    try:
+        text = data.decode("cp1252")
+    except UnicodeDecodeError as exc:
+        location = f" ({path})" if path is not None else ""
+        raise ConfigEncodingError(
+            f"Could not decode reapack.ini{location} as UTF-8 or Windows-1252. "
+            "The file may be corrupted or use an unsupported encoding."
+        ) from exc
+    return DecodedIni(text=text, encoding="cp1252")
+
+
+def encode_ini_text(text: str, encoding: str) -> bytes:
+    return text.encode(encoding)
+
+
+def read_ini_file(path: Path) -> DecodedIni:
+    with path.open("rb") as handle:
+        data = handle.read()
+    return decode_ini_bytes(data, path=path)
 
 
 def parse_remotes(ini_text: str) -> ParsedRemotes:
@@ -197,11 +236,21 @@ def import_remotes(
     if not target_path.exists():
         raise FileNotFoundError(f"Target reapack.ini not found: {target_path}")
 
-    with target_path.open("r", encoding="utf-8", newline="") as handle:
-        original_text = handle.read()
+    decoded = read_ini_file(target_path)
+    original_text = decoded.text
+    encoding = decoded.encoding
     existing = parse_remotes(original_text)
     merged, added, skipped = merge_remotes(existing.remotes, imported_remotes)
     updated_text = replace_remotes_section(original_text, merged)
+
+    try:
+        encoded_update = encode_ini_text(updated_text, encoding)
+    except UnicodeEncodeError as exc:
+        raise ConfigEncodingError(
+            f"Cannot import into {target_path}: one or more imported repository names "
+            f"contain characters that cannot be represented in the existing "
+            f"{encoding} configuration encoding."
+        ) from exc
 
     backup_path = backup_path_for(target_path, now=now)
     try:
@@ -212,17 +261,16 @@ def import_remotes(
     temp_fd, temp_name = tempfile.mkstemp(
         prefix=f"{target_path.name}.tmp.",
         dir=target_path.parent,
-        text=True,
     )
     temp_path = Path(temp_name)
     try:
-        with os.fdopen(temp_fd, "w", encoding="utf-8", newline="") as handle:
-            handle.write(updated_text)
+        with os.fdopen(temp_fd, "wb") as handle:
+            handle.write(encoded_update)
             handle.flush()
             os.fsync(handle.fileno())
         os.replace(temp_path, target_path)
 
-        with target_path.open("r", encoding="utf-8", newline="") as handle:
+        with target_path.open("r", encoding=encoding, newline="") as handle:
             written = handle.read()
         written_remotes = parse_remotes(written).remotes
         seen_after = {normalize_url(remote.url) for remote in written_remotes}

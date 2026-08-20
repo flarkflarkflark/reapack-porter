@@ -96,14 +96,14 @@ jobs:
           root = Path("release-assets")
           files = sorted(path.name for path in root.iterdir() if path.is_file())
           expected = sorted([
-              "ReaPack-Porter-0.1.0-linux-x86_64.tar.gz",
-              "ReaPack-Porter-0.1.0-linux-x86_64.tar.gz.sha256",
-              "ReaPack-Porter-0.1.0-macos-arm64.zip",
-              "ReaPack-Porter-0.1.0-macos-arm64.zip.sha256",
-              "ReaPack-Porter-0.1.0-macos-x86_64.zip",
-              "ReaPack-Porter-0.1.0-macos-x86_64.zip.sha256",
-              "ReaPack-Porter-0.1.0-windows-x86_64.zip",
-              "ReaPack-Porter-0.1.0-windows-x86_64.zip.sha256",
+              "ReaPack-Porter-0.1.1-linux-x86_64.tar.gz",
+              "ReaPack-Porter-0.1.1-linux-x86_64.tar.gz.sha256",
+              "ReaPack-Porter-0.1.1-macos-arm64.zip",
+              "ReaPack-Porter-0.1.1-macos-arm64.zip.sha256",
+              "ReaPack-Porter-0.1.1-macos-x86_64.zip",
+              "ReaPack-Porter-0.1.1-macos-x86_64.zip.sha256",
+              "ReaPack-Porter-0.1.1-windows-x86_64.zip",
+              "ReaPack-Porter-0.1.1-windows-x86_64.zip.sha256",
               "SHA256SUMS.txt",
           ])
           if files != expected:
@@ -115,14 +115,14 @@ jobs:
         with:
           name: ${{ steps.release.outputs.candidate-artifact-name }}
           path: |
-            release-assets/ReaPack-Porter-0.1.0-linux-x86_64.tar.gz
-            release-assets/ReaPack-Porter-0.1.0-linux-x86_64.tar.gz.sha256
-            release-assets/ReaPack-Porter-0.1.0-macos-arm64.zip
-            release-assets/ReaPack-Porter-0.1.0-macos-arm64.zip.sha256
-            release-assets/ReaPack-Porter-0.1.0-macos-x86_64.zip
-            release-assets/ReaPack-Porter-0.1.0-macos-x86_64.zip.sha256
-            release-assets/ReaPack-Porter-0.1.0-windows-x86_64.zip
-            release-assets/ReaPack-Porter-0.1.0-windows-x86_64.zip.sha256
+            release-assets/ReaPack-Porter-0.1.1-linux-x86_64.tar.gz
+            release-assets/ReaPack-Porter-0.1.1-linux-x86_64.tar.gz.sha256
+            release-assets/ReaPack-Porter-0.1.1-macos-arm64.zip
+            release-assets/ReaPack-Porter-0.1.1-macos-arm64.zip.sha256
+            release-assets/ReaPack-Porter-0.1.1-macos-x86_64.zip
+            release-assets/ReaPack-Porter-0.1.1-macos-x86_64.zip.sha256
+            release-assets/ReaPack-Porter-0.1.1-windows-x86_64.zip
+            release-assets/ReaPack-Porter-0.1.1-windows-x86_64.zip.sha256
             release-assets/SHA256SUMS.txt
           if-no-files-found: error
           retention-days: 30
@@ -186,8 +186,8 @@ jobs:
           gh release create "$TAG" \
             --verify-tag \
             --draft \
-            --title "ReaPack Porter v0.1.0" \
-            --notes-file docs/release-notes/v0.1.0.md \
+            --title "ReaPack Porter v0.1.1" \
+            --notes-file docs/release-notes/v0.1.1.md \
             "${ASSETS[@]}"
         env:
           GH_TOKEN: ${{ github.token }}

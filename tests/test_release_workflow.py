@@ -96,7 +96,7 @@ def test_draft_release_job_only_runs_for_tag_push_and_creates_draft() -> None:
     assert "gh release create \"$TAG\"" in draft
     assert "--verify-tag" in draft
     assert "--draft" in draft
-    assert "--notes-file docs/release-notes/v0.1.0.md" in draft
+    assert "--notes-file docs/release-notes/v0.1.1.md" in draft
     assert "--generate-notes" not in draft
     assert "--prerelease" not in draft
 
@@ -148,14 +148,14 @@ def test_release_jobs_pin_python_311_before_python_commands() -> None:
 def test_release_workflow_uploads_or_publishes_exact_checked_asset_set() -> None:
     text = _text()
     for filename in [
-        "ReaPack-Porter-0.1.0-linux-x86_64.tar.gz",
-        "ReaPack-Porter-0.1.0-linux-x86_64.tar.gz.sha256",
-        "ReaPack-Porter-0.1.0-macos-arm64.zip",
-        "ReaPack-Porter-0.1.0-macos-arm64.zip.sha256",
-        "ReaPack-Porter-0.1.0-macos-x86_64.zip",
-        "ReaPack-Porter-0.1.0-macos-x86_64.zip.sha256",
-        "ReaPack-Porter-0.1.0-windows-x86_64.zip",
-        "ReaPack-Porter-0.1.0-windows-x86_64.zip.sha256",
+        "ReaPack-Porter-0.1.1-linux-x86_64.tar.gz",
+        "ReaPack-Porter-0.1.1-linux-x86_64.tar.gz.sha256",
+        "ReaPack-Porter-0.1.1-macos-arm64.zip",
+        "ReaPack-Porter-0.1.1-macos-arm64.zip.sha256",
+        "ReaPack-Porter-0.1.1-macos-x86_64.zip",
+        "ReaPack-Porter-0.1.1-macos-x86_64.zip.sha256",
+        "ReaPack-Porter-0.1.1-windows-x86_64.zip",
+        "ReaPack-Porter-0.1.1-windows-x86_64.zip.sha256",
         "SHA256SUMS.txt",
     ]:
         assert filename in text
