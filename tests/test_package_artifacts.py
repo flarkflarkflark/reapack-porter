@@ -40,10 +40,10 @@ def _make_dist(tmp_path: Path, platform: str) -> Path:
 
 def test_artifact_names_include_project_version() -> None:
     expected = {
-        ("linux", "x86_64"): "ReaPack-Porter-0.1.0-linux-x86_64.tar.gz",
-        ("windows", "x86_64"): "ReaPack-Porter-0.1.0-windows-x86_64.zip",
-        ("macos", "x86_64"): "ReaPack-Porter-0.1.0-macos-x86_64.zip",
-        ("macos", "arm64"): "ReaPack-Porter-0.1.0-macos-arm64.zip",
+        ("linux", "x86_64"): "ReaPack-Porter-0.1.1-linux-x86_64.tar.gz",
+        ("windows", "x86_64"): "ReaPack-Porter-0.1.1-windows-x86_64.zip",
+        ("macos", "x86_64"): "ReaPack-Porter-0.1.1-macos-x86_64.zip",
+        ("macos", "arm64"): "ReaPack-Porter-0.1.1-macos-arm64.zip",
     }
     for (platform, arch), filename in expected.items():
         paths = package_artifacts.artifact_paths(platform=platform, arch=arch, output_dir="release")
@@ -54,10 +54,10 @@ def test_artifact_names_include_project_version() -> None:
 def test_expected_release_artifacts_are_exact_four_platform_archives() -> None:
     names = [paths.archive.name for paths in package_artifacts.expected_release_artifacts(output_dir="release")]
     assert names == [
-        "ReaPack-Porter-0.1.0-linux-x86_64.tar.gz",
-        "ReaPack-Porter-0.1.0-windows-x86_64.zip",
-        "ReaPack-Porter-0.1.0-macos-x86_64.zip",
-        "ReaPack-Porter-0.1.0-macos-arm64.zip",
+        "ReaPack-Porter-0.1.1-linux-x86_64.tar.gz",
+        "ReaPack-Porter-0.1.1-windows-x86_64.zip",
+        "ReaPack-Porter-0.1.1-macos-x86_64.zip",
+        "ReaPack-Porter-0.1.1-macos-arm64.zip",
     ]
 
 
@@ -201,7 +201,7 @@ def test_paths_command_writes_github_output(monkeypatch: pytest.MonkeyPatch, tmp
 
 
 def _write_release_archive(path: Path, platform: str, arch: str) -> None:
-    top = f"ReaPack-Porter-0.1.0-{platform}-{arch}"
+    top = f"ReaPack-Porter-0.1.1-{platform}-{arch}"
     if platform == "linux":
         with tarfile.open(path, "w:gz") as tar:
             for name, data in {
@@ -270,27 +270,27 @@ def test_verify_release_set_calls_platform_verifier_for_each_artifact(tmp_path: 
 
     package_artifacts.verify_release_set(input_dir=tmp_path, manifest=tmp_path / "SHA256SUMS.txt", verifier=fake_verifier)
     assert calls == [
-        ("ReaPack-Porter-0.1.0-linux-x86_64.tar.gz", "linux", "x86_64"),
-        ("ReaPack-Porter-0.1.0-macos-arm64.zip", "macos", "arm64"),
-        ("ReaPack-Porter-0.1.0-macos-x86_64.zip", "macos", "x86_64"),
-        ("ReaPack-Porter-0.1.0-windows-x86_64.zip", "windows", "x86_64"),
+        ("ReaPack-Porter-0.1.1-linux-x86_64.tar.gz", "linux", "x86_64"),
+        ("ReaPack-Porter-0.1.1-macos-arm64.zip", "macos", "arm64"),
+        ("ReaPack-Porter-0.1.1-macos-x86_64.zip", "macos", "x86_64"),
+        ("ReaPack-Porter-0.1.1-windows-x86_64.zip", "windows", "x86_64"),
     ]
 
 
 def test_verify_release_set_rejects_missing_archive_and_sidecar(tmp_path: Path) -> None:
     _make_release_set(tmp_path)
-    (tmp_path / "ReaPack-Porter-0.1.0-linux-x86_64.tar.gz").unlink()
-    (tmp_path / "ReaPack-Porter-0.1.0-windows-x86_64.zip.sha256").unlink()
+    (tmp_path / "ReaPack-Porter-0.1.1-linux-x86_64.tar.gz").unlink()
+    (tmp_path / "ReaPack-Porter-0.1.1-windows-x86_64.zip.sha256").unlink()
     with pytest.raises(package_artifacts.PackageError) as excinfo:
         package_artifacts.verify_release_set(input_dir=tmp_path, manifest=tmp_path / "SHA256SUMS.txt")
     message = str(excinfo.value)
-    assert "missing archives: ReaPack-Porter-0.1.0-linux-x86_64.tar.gz" in message
-    assert "missing sidecars: ReaPack-Porter-0.1.0-windows-x86_64.zip.sha256" in message
+    assert "missing archives: ReaPack-Porter-0.1.1-linux-x86_64.tar.gz" in message
+    assert "missing sidecars: ReaPack-Porter-0.1.1-windows-x86_64.zip.sha256" in message
 
 
 def test_verify_release_set_rejects_checksum_mismatch(tmp_path: Path) -> None:
     _make_release_set(tmp_path)
-    (tmp_path / "ReaPack-Porter-0.1.0-linux-x86_64.tar.gz.sha256").write_text("0" * 64 + "  ReaPack-Porter-0.1.0-linux-x86_64.tar.gz\n", encoding="utf-8")
+    (tmp_path / "ReaPack-Porter-0.1.1-linux-x86_64.tar.gz.sha256").write_text("0" * 64 + "  ReaPack-Porter-0.1.1-linux-x86_64.tar.gz\n", encoding="utf-8")
     with pytest.raises(package_artifacts.PackageError, match="Checksum mismatch"):
         package_artifacts.verify_release_set(input_dir=tmp_path, manifest=tmp_path / "SHA256SUMS.txt")
 
@@ -299,7 +299,7 @@ def test_verify_release_set_rejects_duplicate_basename(tmp_path: Path) -> None:
     _make_release_set(tmp_path)
     duplicate_dir = tmp_path / "duplicate"
     duplicate_dir.mkdir()
-    source = tmp_path / "ReaPack-Porter-0.1.0-linux-x86_64.tar.gz"
+    source = tmp_path / "ReaPack-Porter-0.1.1-linux-x86_64.tar.gz"
     (duplicate_dir / source.name).write_bytes(source.read_bytes())
     with pytest.raises(package_artifacts.PackageError, match="Duplicate archive basename"):
         package_artifacts.verify_release_set(input_dir=tmp_path, manifest=tmp_path / "SHA256SUMS.txt")
@@ -307,13 +307,13 @@ def test_verify_release_set_rejects_duplicate_basename(tmp_path: Path) -> None:
 
 def test_verify_release_set_rejects_unexpected_archive_and_sidecar(tmp_path: Path) -> None:
     _make_release_set(tmp_path)
-    extra_archive = tmp_path / "ReaPack-Porter-0.1.0-freebsd-x86_64.zip"
+    extra_archive = tmp_path / "ReaPack-Porter-0.1.1-freebsd-x86_64.zip"
     extra_archive.write_text("extra", encoding="utf-8")
     (tmp_path / f"{extra_archive.name}.sha256").write_text("0" * 64 + f"  {extra_archive.name}\n", encoding="utf-8")
     with pytest.raises(package_artifacts.PackageError) as excinfo:
         package_artifacts.verify_release_set(input_dir=tmp_path, manifest=tmp_path / "SHA256SUMS.txt")
-    assert "unexpected archives: ReaPack-Porter-0.1.0-freebsd-x86_64.zip" in str(excinfo.value)
-    assert "unexpected sidecars: ReaPack-Porter-0.1.0-freebsd-x86_64.zip.sha256" in str(excinfo.value)
+    assert "unexpected archives: ReaPack-Porter-0.1.1-freebsd-x86_64.zip" in str(excinfo.value)
+    assert "unexpected sidecars: ReaPack-Porter-0.1.1-freebsd-x86_64.zip.sha256" in str(excinfo.value)
 
 
 def test_verify_release_set_refuses_existing_manifest_without_force(tmp_path: Path) -> None:

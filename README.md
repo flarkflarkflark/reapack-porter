@@ -10,12 +10,12 @@ Published builds are distributed through GitHub Releases. Each release contains 
 HASH  FILENAME
 ```
 
-The v0.1.0 archive names are:
+The v0.1.1 archive names are:
 
-- `ReaPack-Porter-0.1.0-linux-x86_64.tar.gz`
-- `ReaPack-Porter-0.1.0-windows-x86_64.zip`
-- `ReaPack-Porter-0.1.0-macos-x86_64.zip`
-- `ReaPack-Porter-0.1.0-macos-arm64.zip`
+- `ReaPack-Porter-0.1.1-linux-x86_64.tar.gz`
+- `ReaPack-Porter-0.1.1-windows-x86_64.zip`
+- `ReaPack-Porter-0.1.1-macos-x86_64.zip`
+- `ReaPack-Porter-0.1.1-macos-arm64.zip`
 
 ## Platform Installation
 
@@ -172,20 +172,20 @@ Folder and ZIP bundles are supported. An export bundle contains:
 Linux:
 
 ```bash
-sha256sum -c ReaPack-Porter-0.1.0-linux-x86_64.tar.gz.sha256
+sha256sum -c ReaPack-Porter-0.1.1-linux-x86_64.tar.gz.sha256
 ```
 
 macOS:
 
 ```bash
-shasum -a 256 -c ReaPack-Porter-0.1.0-macos-arm64.zip.sha256
+shasum -a 256 -c ReaPack-Porter-0.1.1-macos-arm64.zip.sha256
 ```
 
 Windows PowerShell:
 
 ```powershell
-$expected = (Get-Content .\ReaPack-Porter-0.1.0-windows-x86_64.zip.sha256).Split()[0]
-$actual = (Get-FileHash .\ReaPack-Porter-0.1.0-windows-x86_64.zip -Algorithm SHA256).Hash.ToLower()
+$expected = (Get-Content .\ReaPack-Porter-0.1.1-windows-x86_64.zip.sha256).Split()[0]
+$actual = (Get-FileHash .\ReaPack-Porter-0.1.1-windows-x86_64.zip -Algorithm SHA256).Hash.ToLower()
 $actual -eq $expected
 ```
 

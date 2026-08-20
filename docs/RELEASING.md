@@ -22,8 +22,8 @@ Create an annotated tag from the exact reviewed `origin/main` commit:
 ```bash
 git fetch origin --prune --tags
 git switch --detach origin/main
-git tag -a v0.1.0 -m "ReaPack Porter v0.1.0"
-git push origin v0.1.0
+git tag -a v0.1.1 -m "ReaPack Porter v0.1.1"
+git push origin v0.1.1
 ```
 
 Never tag from a dirty local `main` checkout. The tag must match the version in `pyproject.toml`. Never move or reuse a published tag; if a published release is wrong, create a new patch version.
@@ -56,4 +56,4 @@ Publish the draft manually only after review.
 - Keep the tag unchanged.
 - Open follow-up work on a new branch and raise the version.
 
-Signing, notarization, DMG, MSI and auto-update are not part of v0.1.0.
+Signing, notarization, DMG, MSI and auto-update are not part of v0.1.1.
