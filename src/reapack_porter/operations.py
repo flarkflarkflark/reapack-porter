@@ -11,12 +11,14 @@ from typing import Callable
 from .bundles import BundleError, create_bundle_zip, export_bundle, load_bundle_remotes
 from .core import (
     BackupError,
+    ConfigEncodingError,
     ImportVerificationError,
     ParsedRemotes,
     Remote,
     import_remotes,
     merge_remotes,
     parse_remotes,
+    read_ini_file,
 )
 from .paths import default_documents_dir, default_reapack_ini_path
 from .processes import ProcessDetectionError, is_reaper_running
@@ -116,8 +118,10 @@ def _cwd_path(cwd: str | Path | None) -> Path:
 
 
 def _read_text(path: Path) -> str:
-    with path.open("r", encoding="utf-8", newline="") as handle:
-        return handle.read()
+    try:
+        return read_ini_file(path).text
+    except ConfigEncodingError as exc:
+        raise InvalidInputError(str(exc)) from exc
 
 
 def _default_target(*, platform: str, env: dict[str, str], deps: OperationDeps) -> Path:
@@ -241,6 +245,8 @@ def import_repositories(
     try:
         backup, added, skipped, total = deps.import_remotes(target_path, imported)
     except FileNotFoundError as exc:
+        raise InvalidInputError(str(exc)) from exc
+    except ConfigEncodingError as exc:
         raise InvalidInputError(str(exc)) from exc
     except (BackupError, ImportVerificationError, OSError) as exc:
         raise ImportOperationError(str(exc)) from exc
